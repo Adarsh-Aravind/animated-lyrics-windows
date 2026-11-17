@@ -1,0 +1,15 @@
+# local environment and generated files
+.venv/
+__pycache__/
+*.pyc
+cache/
+build/
+dist/
+*.log
+
+# editor files
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
