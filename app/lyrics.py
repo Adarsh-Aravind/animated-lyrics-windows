@@ -190,9 +190,9 @@ class LyricsProvider:
                 return max(results, key=rank)
         return None
 
-    async def get(self, track_id: str, title: str, artist: str, album: str, duration: float) -> dict:
+    async def get(self, track_id: str, title: str, artist: str, album: str, duration: float, force: bool = False) -> dict:
         cache = CACHE_DIR / f"{track_id}.json"
-        if cache.exists():
+        if cache.exists() and not force:
             try:
                 return json.loads(cache.read_text("utf-8"))
             except Exception:

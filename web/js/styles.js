@@ -696,4 +696,127 @@ class Glitch extends Base {
   }
 }
 
-export const STYLES = [Glide, Pop, Stack, Spotlight, Bounce, Love, Wave, Scatter, Depth, Focus, Neon, Collage, Board, Glitch, Type, Cinema];
+// ───────────────────────── Chat: the song as a two-person chat ─────────────────────────
+const REACTIONS = ['❤️', '🔥', '😭', '✨', '🥹', '💯'];
+const clockTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+class Chat extends Base {
+  static id = 'chat'; static label = 'Chat'; static hint = 'WhatsApp-style bubbles: two people texting the song back and forth';
+  constructor(root, app) {
+    super(root, app);
+    this.feed = el('div', 'ch-feed');
+    root.appendChild(this.feed);
+  }
+  reset() {
+    this.feed.innerHTML = '';
+    this.msgs = new Map(); this.shown = -1; this.typing = null;
+    // who "sends" each line: alternate, but a line ending in a comma keeps going from the same person
+    // who sends each line: random runs like a real chat. Each person sends 1–3 bubbles before the
+    // other replies (sometimes just one, sometimes a burst). A line that ends in a comma carries on
+    // from the same person. Seeded by the song, so seeking back gives the same conversation.
+    this.side = [];
+    let st = Math.floor(hash((this.app.trackTitle || '') + '|' + (this.app.trackArtist || '')) * 4294967295) || 1;
+    const rand = () => { // mulberry32: small seeded random number generator
+      st = (st + 0x6d2b79f5) | 0;
+      let x = Math.imul(st ^ (st >>> 15), 1 | st);
+      x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+      return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+    };
+    let side = rand() > 0.5 ? 1 : 0, left = 0;
+    this.lines.forEach((L, i) => {
+      const prev = this.lines[i - 1];
+      if (prev && /,\s*$/.test(prev.text)) { this.side.push(side); return; }
+      if (left <= 0) {
+        if (i > 0) side = 1 - side;
+        const r = rand();
+        left = r < 0.45 ? 1 : r < 0.8 ? 2 : 3;
+      }
+      this.side.push(side);
+      left--;
+    });
+  }
+  relayout() {}
+  flip(mutate) {
+    const kids = [...this.feed.children];
+    const before = kids.map((k) => k.getBoundingClientRect().top);
+    mutate();
+    kids.forEach((k, i) => {
+      if (!k.isConnected) return;
+      const d = before[i] - k.getBoundingClientRect().top;
+      if (Math.abs(d) > 1) k.animate([{ transform: `translateY(${d}px)` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    });
+    while (this.feed.children.length > 16) this.feed.firstChild.remove();
+  }
+  bubble(i, animate = true) {
+    const L = this.lines[i];
+    const me = this.side[i] === 1;
+    const prev = this.feed.lastElementChild;
+    const cont = prev && !prev.classList.contains('ch-typing') && prev.classList.contains(me ? 'me' : 'them');
+    const b = el('div', `ch-msg ${me ? 'me' : 'them'}${cont ? ' cont' : ''}`);
+    const txt = el('div', 'ch-text');
+    const ws = L.words.map((w) => { const s = el('span', 'cw3', w.text); txt.append(s, ' '); return s; });
+    const meta = el('span', 'ch-meta', clockTime());
+    if (me) meta.appendChild(el('span', 'ch-ticks', '✓✓'));
+    txt.appendChild(meta);
+    b.appendChild(txt);
+    this.flip(() => this.feed.appendChild(b));
+    if (animate) b.animate([{ opacity: 0, transform: `translateY(14px) scale(.85)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,1.3,.4,1)' });
+    const react = hash(L.text + i) > 0.82 ? REACTIONS[Math.floor(hash(L.text) * REACTIONS.length)] : null;
+    this.msgs.set(i, { b, ws, on: ws.map(() => false), read: false, react, reacted: false });
+  }
+  setTyping(side) {
+    if (this.typing && this.typing.side === side) return;
+    this.clearTyping();
+    const tb = el('div', `ch-msg ch-typing ${side === 1 ? 'me' : 'them'}`);
+    tb.innerHTML = '<div class="ch-text"><i></i><i></i><i></i></div>';
+    this.flip(() => this.feed.appendChild(tb));
+    tb.animate([{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
+    this.typing = { el: tb, side };
+  }
+  clearTyping() {
+    if (!this.typing) return;
+    this.typing.el.remove();
+    this.typing = null;
+  }
+  update(t, s) {
+    const idx = s.idx;
+    if (idx < this.shown) { // seeked backwards: rebuild recent history
+      this.feed.innerHTML = ''; this.msgs.clear(); this.typing = null;
+      for (let i = Math.max(0, idx - 7); i <= idx; i++) this.bubble(i, false);
+      this.shown = idx;
+    }
+    while (this.shown < idx) {
+      this.shown++;
+      if (this.typing) this.clearTyping();
+      if (idx - this.shown > 8) continue; // jumped far ahead: skip old lines
+      this.bubble(this.shown);
+    }
+    // typing dots shortly before the next line arrives
+    const nx = this.lines[idx + 1];
+    if (nx && t >= nx.start - 1.3 && t < nx.start && (idx < 0 || t > this.lines[idx].sungEnd - 0.2)) this.setTyping(this.side[idx + 1]);
+    else if (this.typing && (!nx || t < nx.start - 1.3)) this.clearTyping();
+    // light words in the live bubble, mark read, add the odd reaction
+    for (const [i, m] of this.msgs) {
+      if (i < idx - 1 && m.read && (!m.react || m.reacted)) continue;
+      const L = this.lines[i];
+      L.words.forEach((w, k) => {
+        const on = t >= w.start || i < idx;
+        if (on !== m.on[k]) { m.on[k] = on; m.ws[k].classList.toggle('on', on); }
+      });
+      if (!m.read && t > L.sungEnd + 0.4) { m.read = true; m.b.classList.add('read'); }
+      if (m.react && !m.reacted && t > L.sungEnd + 0.8) {
+        m.reacted = true;
+        const r = el('span', 'ch-react', m.react);
+        m.b.appendChild(r);
+        r.animate([{ transform: 'scale(0)' }, { transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 380, easing: 'ease-out' });
+      }
+    }
+  }
+}
+
+export const STYLES = [Glide, Chat, Pop, Stack, Spotlight, Bounce, Love, Wave, Scatter, Depth, Focus, Neon, Collage, Board, Glitch, Type, Cinema];
+const CATS = {
+  glide: 'Classic', spot: 'Classic', bounce: 'Classic', focus: 'Classic', cinema: 'Classic',
+  pop: 'Kinetic', stack: 'Kinetic', scatter: 'Kinetic', glitch: 'Kinetic', collage: 'Kinetic', wave: 'Kinetic',
+  chat: 'Scenes', depth: 'Scenes', neon: 'Scenes', board: 'Scenes', type: 'Scenes', love: 'Scenes',
+};
+STYLES.forEach((S) => { S.cat = CATS[S.id] || 'Classic'; });

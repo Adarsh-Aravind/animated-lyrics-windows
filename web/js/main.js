@@ -1,32 +1,49 @@
-import { buildTimeline, Cursor, LEAD, hash } from './engine.js';
+import { buildTimeline, Cursor, LEAD } from './engine.js';
 import { STYLES } from './styles.js';
 import { GradientBG, EdgeLight, swapLayer, paletteFromImage, fallbackPalette, applyPaletteVars } from './visuals.js';
+import { initHome } from './home.js';
 
 const $ = (s) => document.querySelector(s);
-const FORCE_DEMO = new URLSearchParams(location.search).has('demo');
+const Q = new URLSearchParams(location.search);
+const FORCE_DEMO = Q.has('demo');
+const SCREEN = Q.get('screen');      // extra-monitor windows
+const PREVIEW = Q.get('preview');    // a style rendered inside a landing-page card
+const HERO = Q.has('hero');          // the big preview on the landing page
 
 // ───────── settings ─────────
-const DEFAULTS = { style: 'glide', backdrop: 'gradient', light: 'glow', color: 'album', font: 'default', size: 1, intensity: 0.8, info: true, auto: false, welcomed: false };
-const OPTIONS = {
+const DEFAULTS = { style: 'glide', backdrop: 'gradient', light: 'flow', color: 'album', font: 'default', size: 1, intensity: 0.85, info: true, auto: false, favs: [] };
+export const OPTIONS = {
   backdrop: [['gradient', 'Gradient'], ['blur', 'Blurred cover'], ['cover', 'Album cover'], ['black', 'Black']],
-  light: [['glow', 'Glow'], ['flow', 'Flow'], ['sides', 'Side lights'], ['off', 'Off']],
-  color: [['album', 'Match album'], ['white', 'White']],
+  light: [['flow', 'Flow'], ['glow', 'Glow'], ['sides', 'Side lights'], ['off', 'Off']],
+  color: [['album', 'Album colours'], ['white', 'White']],
   font: [['default', 'Style default'], ['Inter', 'Sans'], ['Nunito', 'Rounded'], ['"Instrument Serif"', 'Serif'], ['Anton', 'Condensed'], ['"JetBrains Mono"', 'Mono']],
 };
-let settings = { ...DEFAULTS };
+const settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('al-settings') || '{}')); } catch {}
+if (!Array.isArray(settings.favs)) settings.favs = [];
+if (PREVIEW) Object.assign(settings, { style: PREVIEW, backdrop: HERO ? settings.backdrop : 'gradient', light: HERO ? settings.light : 'off', info: false });
+
 let offsets = {}; // per-song sync nudges (seconds), remembered between runs
 try { offsets = JSON.parse(localStorage.getItem('al-offsets') || '{}'); } catch {}
 let applyingRemote = false;
-// Settings live on the local server too, so every screen's window stays in step.
-function pushSettings() {
-  if (applyingRemote || !window.__ws || window.__ws.readyState !== 1) return;
-  window.__ws.send(JSON.stringify({ type: 'settings', data: { ...settings, offsets } }));
-}
-const save = () => { try { localStorage.setItem('al-settings', JSON.stringify(settings)); } catch {} pushSettings(); };
-const saveOffsets = () => { try { localStorage.setItem('al-offsets', JSON.stringify(offsets)); } catch {} pushSettings(); };
-const SCREEN = new URLSearchParams(location.search).get('screen'); // set on the extra-screen windows
+let home = null;
 
+// Settings also live on the local server, so every screen's window stays in step.
+function pushSettings() {
+  if (PREVIEW || applyingRemote || !ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'settings', data: { ...settings, offsets } }));
+}
+function save() {
+  if (PREVIEW) return;
+  try { localStorage.setItem('al-settings', JSON.stringify(settings)); } catch {}
+  pushSettings();
+  home?.refresh();
+}
+function saveOffsets() {
+  try { localStorage.setItem('al-offsets', JSON.stringify(offsets)); } catch {}
+  pushSettings();
+  home?.refresh();
+}
 function adoptRemote(data) {
   if (!data || !Object.keys(data).length) return false;
   applyingRemote = true;
@@ -35,10 +52,12 @@ function adoptRemote(data) {
     if (o) offsets = o;
     const styleChanged = rest.style && rest.style !== settings.style;
     Object.assign(settings, rest);
+    if (!Array.isArray(settings.favs)) settings.favs = [];
     try { localStorage.setItem('al-settings', JSON.stringify(settings)); localStorage.setItem('al-offsets', JSON.stringify(offsets)); } catch {}
     applySettings();
     if (styleChanged || !style) setStyle(settings.style);
   } finally { applyingRemote = false; }
+  home?.refresh();
   return true;
 }
 
@@ -46,16 +65,19 @@ function adoptRemote(data) {
 const app = {
   edge: new EdgeLight($('#edge')),
   bg: new GradientBG($('#bg-gradient')),
-  trackTitle: '',
+  trackTitle: '', trackArtist: '', trackArt: null,
   palette: fallbackPalette('preview!', true),
 };
 const cursor = new Cursor();
 let style = null;
-let track = null;       // {id, title, artist, art, duration}
+let track = null;       // {id, title, artist, art, duration, app}
 let lyrics = null;      // server lyrics payload
 let timeline = [];
 let clock = { pos: 0, stamp: 0, playing: false };
 let demo = false;
+let screenCount = 1;
+let players = [];      // every open media app: {app, playing, active}
+let paused = false;     // previews pause when scrolled out of view
 
 function now() {
   const t = clock.pos + (clock.playing ? Date.now() / 1000 - clock.stamp : 0);
@@ -70,38 +92,41 @@ const DEMO_LINES = [
   [34.2, 'Hold the moment, let it fall in time'], [38.4, 'Every heartbeat landing on a line'], [43.5, ''],
 ];
 const DEMO = {
-  track: { id: 'demo', title: 'Preview', artist: 'Play a song in Spotify, YouTube or any player', art: null, duration: 46 },
+  track: { id: 'demo', title: 'Preview', artist: 'Midnight Radio', art: null, duration: 46 },
   lyrics: { status: 'synced', lines: DEMO_LINES.map(([t, text]) => ({ t, text, words: text.split(' ').filter(Boolean).map((w) => ({ w, t: null })) })) },
 };
-let demoStart = 0;
-function startDemo() {
-  demo = true; demoStart = Date.now() / 1000;
+function startDemo(offset = 0) {
+  demo = true;
   setTrack(DEMO.track); setLyrics({ ...DEMO.lyrics, id: 'demo' });
-  clock = { pos: 0, stamp: demoStart, playing: true };
+  clock = { pos: offset, stamp: Date.now() / 1000, playing: true };
 }
 
 // ───────── track / lyrics handling ─────────
 async function setTrack(t) {
   track = t;
-  app.trackTitle = t.title;
+  Object.assign(app, { trackTitle: t.title, trackArtist: t.artist, trackArt: t.art });
   lyrics = null; timeline = []; cursor.set([]);
   style?.setTimeline([]);
-  $('#ui-title').textContent = t.title || 'Nothing playing';
-  $('#ui-sub').textContent = t.artist || '';
   $('#info-title').textContent = t.title;
   $('#info-artist').textContent = t.artist;
   $('#info').classList.toggle('has', !!t.title && t.id !== 'demo');
   $('#info-art').style.backgroundImage = t.art ? `url("${t.art}")` : '';
   swapLayer($('#bg-art'), 'art', t.art);
   swapLayer($('#center-art'), 'art', t.art);
+  home?.refresh();
   // demo gets a colourful preview palette; a real song without a cover gets soft white, never random colours
   let pal = t.id === 'demo' ? fallbackPalette('preview!', true) : fallbackPalette();
   if (t.art) { try { pal = await paletteFromImage(t.art); } catch {} }
   if (track !== t) return;
+  setPalette(pal);
+  updateMessage();
+}
+
+function setPalette(pal) {
   app.palette = pal;
   applyPaletteVars(pal, settings.color);
   app.bg.setPalette(pal);
-  updateMessage();
+  home?.paletteChanged(pal);
 }
 
 function setLyrics(l) {
@@ -118,6 +143,7 @@ function setLyrics(l) {
   cursor.set(timeline);
   style?.setTimeline(timeline);
   updateMessage();
+  home?.refresh();
 }
 
 function updateMessage() {
@@ -133,36 +159,37 @@ function updateMessage() {
   m.innerHTML = html;
   m.classList.toggle('show', !!html);
   let b = '';
-  if (demo) b = 'PREVIEW · play a song to start';
+  if (demo && !PREVIEW) b = 'PREVIEW · play a song to start';
   else if (lyrics?.status === 'plain') b = 'Lyrics not time-synced · rough timing';
-  else if (lyrics?.status === 'synced' && !lyrics.wordSynced) b = '';
   badge.textContent = b;
   badge.classList.toggle('show', !!b);
 }
 
 // ───────── websocket ─────────
-let ws;
+let ws = null;
 function connect() {
-  ws = window.__ws = new WebSocket(`ws://${location.host}/ws${SCREEN ? `?screen=${SCREEN}` : ''}`);
+  ws = new WebSocket(`ws://${location.host}/ws${SCREEN ? `?screen=${SCREEN}` : ''}`);
+  ws.onopen = () => home?.refresh();
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === 'hello') {
-      $('#screens-row').hidden = !(m.screens > 1);
-      // first ever run: seed the server with this window's settings
-      if (!adoptRemote(m.settings)) pushSettings();
+      screenCount = m.screens || 1;
+      if (!adoptRemote(m.settings)) pushSettings(); // first ever run: seed the server with this window's settings
+      home?.refresh();
       return;
     }
     if (m.type === 'settings') { adoptRemote(m.data); return; }
+    if (m.type === 'players') { players = m.list || []; home?.refresh(); return; }
     if (FORCE_DEMO) { if (!demo) startDemo(); return; }
     if (m.type === 'idle') { if (!demo) startDemo(); return; }
     if (m.type === 'track') {
       if (demo || !track || track.id !== m.id || track.art !== m.art) {
         const same = track && track.id === m.id && !demo;
         demo = false;
-        if (same) { track.art = m.art; setTrack({ ...track, art: m.art }).then(() => lyrics && setLyrics(lyrics)); }
+        if (same) { setTrack({ ...track, art: m.art }).then(() => lyrics && setLyrics(lyrics)); }
         else {
           if (settings.auto && track && track.id !== 'demo') surprise(true);
-          setTrack({ id: m.id, title: m.title, artist: m.artist, art: m.art, duration: m.duration });
+          setTrack({ id: m.id, title: m.title, artist: m.artist, art: m.art, duration: m.duration, app: m.app });
         }
       }
     } else if (m.type === 'lyrics') {
@@ -173,15 +200,16 @@ function connect() {
       const predicted = now();
       const next = { pos: m.position, stamp: m.stamp, playing: m.playing };
       const actual = next.pos + (next.playing ? Date.now() / 1000 - next.stamp : 0) + LEAD + (offsets[track.id] || 0);
-      if (m.playing !== clock.playing || Math.abs(actual - predicted) > 0.12) clock = next;
-      $('#btn-play').innerHTML = m.playing ? '&#x23F8;' : '&#x25B6;';
+      const changed = m.playing !== clock.playing;
+      if (changed || Math.abs(actual - predicted) > 0.12) clock = next;
+      if (changed) home?.refresh();
     }
   };
-  ws.onclose = () => setTimeout(connect, 1500);
+  ws.onclose = () => { home?.refresh(); setTimeout(connect, 1500); };
 }
 const send = (o) => ws && ws.readyState === 1 && ws.send(JSON.stringify(o));
 
-// ───────── style switching ─────────
+// ───────── styles & settings ─────────
 function setStyle(id) {
   const S = STYLES.find((s) => s.id === id) || STYLES[0];
   settings.style = S.id; save();
@@ -191,15 +219,19 @@ function setStyle(id) {
   root.innerHTML = '';
   style = new S(root, app);
   style.setTimeline(timeline);
-  $('#style-hint').textContent = `${S.label} — ${S.hint}`;
-  renderChips();
 }
-function cycle(key, list, dir = 1) {
+function stepStyle(dir) {
+  const favs = settings.favs.filter((f) => STYLES.some((s) => s.id === f));
+  const ids = favs.length >= 2 ? favs : STYLES.map((s) => s.id);
+  const i = ids.indexOf(settings.style);
+  setStyle(ids[(i + dir + ids.length) % ids.length]);
+}
+function cycle(key, dir = 1) {
+  const list = OPTIONS[key];
   const i = list.findIndex((o) => o[0] === settings[key]);
   settings[key] = list[(i + dir + list.length) % list.length][0];
   applySettings();
 }
-
 function applySettings() {
   const b = document.body;
   b.classList.remove('bd-gradient', 'bd-blur', 'bd-cover', 'bd-black');
@@ -211,76 +243,38 @@ function applySettings() {
   r.setProperty('--light', settings.intensity);
   if (settings.font === 'default') r.removeProperty('--font-override'); else r.setProperty('--font-override', settings.font);
   applyPaletteVars(app.palette, settings.color);
-  $('#opt-size').value = settings.size;
-  $('#opt-intensity').value = settings.intensity;
-  $('#opt-info').checked = !!settings.info;
-  $('#opt-auto').checked = !!settings.auto;
-  $('#opt-screens').checked = !!settings.allScreens;
-  save(); renderChips();
+  save();
   requestAnimationFrame(() => style?.relayout());
 }
-
-function renderChips() {
-  const mk = (sel, items, key, onPick) => {
-    const box = $(sel);
-    box.innerHTML = '';
-    for (const [val, label, title] of items) {
-      const btn = document.createElement('button');
-      btn.textContent = label;
-      if (title) btn.title = title;
-      btn.classList.toggle('sel', settings[key] === val);
-      btn.onclick = () => onPick(val);
-      box.appendChild(btn);
-    }
-  };
-  mk('#opt-style', STYLES.map((S) => [S.id, S.label, S.hint]), 'style', setStyle);
-  for (const key of ['backdrop', 'light', 'color', 'font']) mk(`#opt-${key}`, OPTIONS[key], key, (v) => { settings[key] = v; applySettings(); });
-  const off = track ? offsets[track.id] || 0 : 0;
-  $('#off-val').textContent = off === 0 ? 'in sync' : `${off < 0 ? 'later' : 'sooner'} by ${Math.abs(off).toFixed(2).replace(/0$/, '')}s`;
-  $('#off-val').title = off ? 'Click to reset' : '';
-}
-
 function nudge(d) {
-  if (!track) return;
+  if (!track || demo) return;
   offsets[track.id] = Math.round(((offsets[track.id] || 0) + d) * 100) / 100;
   if (offsets[track.id] === 0) delete offsets[track.id];
   saveOffsets();
-  renderChips();
 }
-
+function resetOffset() { if (track && offsets[track.id]) { delete offsets[track.id]; saveOffsets(); } }
 function surprise(stylesOnly = false) {
   const pick = (arr, not) => { const c = arr.filter((x) => x !== not); return c[Math.floor(Math.random() * c.length)]; };
   if (!stylesOnly) {
     settings.backdrop = pick(['gradient', 'gradient', 'blur', 'cover'], settings.backdrop);
-    settings.light = pick(['glow', 'flow', 'sides'], settings.light);
+    settings.light = pick(['flow', 'glow', 'sides'], settings.light);
     applySettings();
   }
   setStyle(pick(STYLES.map((s) => s.id), settings.style));
 }
-
-function showWelcome(show) {
-  $('#welcome').hidden = !show;
-  if (!show) { settings.welcomed = true; save(); }
-}
-
-// ───────── UI wiring ─────────
-$('#opt-size').oninput = (e) => { settings.size = +e.target.value; applySettings(); };
-$('#opt-intensity').oninput = (e) => { settings.intensity = +e.target.value; applySettings(); };
-$('#opt-info').onchange = (e) => { settings.info = e.target.checked; applySettings(); };
-$('#off-minus').onclick = () => nudge(-0.25); // lyrics too early → show them later
-$('#off-plus').onclick = () => nudge(0.25);   // lyrics too late → show them sooner
-$('#off-val').onclick = () => { if (track && offsets[track.id]) { delete offsets[track.id]; saveOffsets(); renderChips(); } };
-$('#btn-surprise').onclick = () => surprise();
-$('#opt-auto').onchange = (e) => { settings.auto = e.target.checked; save(); };
-$('#opt-screens').onchange = (e) => {
-  settings.allScreens = e.target.checked; save();
-  send({ type: 'screens', action: e.target.checked ? 'all' : 'one' });
-};
-$('#welcome-ok').onclick = () => showWelcome(false);
-$('#btn-help').onclick = () => showWelcome(true);
-document.querySelectorAll('[data-ctl]').forEach((b) => (b.onclick = () => send({ type: 'control', action: b.dataset.ctl })));
 const toggleFull = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
-$('#btn-full').onclick = toggleFull;
+
+// ───────── landing screen ↔ lyrics stage ─────────
+function enterStage() {
+  document.body.classList.add('on-stage');
+  home?.hidden();
+  pokeUI();
+}
+function showHome() {
+  if (SCREEN || PREVIEW) return;
+  document.body.classList.remove('on-stage');
+  home?.shown();
+}
 
 let uiTimer;
 function pokeUI() {
@@ -288,47 +282,53 @@ function pokeUI() {
   document.body.classList.remove('hide-cursor');
   clearTimeout(uiTimer);
   uiTimer = setTimeout(() => {
-    if (!$('#ui').matches(':hover')) { document.body.classList.remove('ui-on'); document.body.classList.add('hide-cursor'); }
-    else pokeUI();
+    if ($('#dock').matches(':hover')) return pokeUI();
+    document.body.classList.remove('ui-on');
+    if (document.body.classList.contains('on-stage')) document.body.classList.add('hide-cursor');
   }, 2600);
 }
-addEventListener('mousemove', pokeUI);
-addEventListener('mousedown', pokeUI);
-addEventListener('dblclick', (e) => { if (!e.target.closest('#ui')) toggleFull(); });
-addEventListener('resize', () => style?.relayout());
-addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
-  const k = e.key.toLowerCase();
-  const ids = STYLES.map((s) => [s.id]);
-  if (k === 'arrowright') { const i = ids.findIndex((x) => x[0] === settings.style); setStyle(ids[(i + 1) % ids.length][0]); }
-  else if (k === 'arrowleft') { const i = ids.findIndex((x) => x[0] === settings.style); setStyle(ids[(i - 1 + ids.length) % ids.length][0]); }
-  else if (k === 'b') cycle('backdrop', OPTIONS.backdrop);
-  else if (k === 'l') cycle('light', OPTIONS.light);
-  else if (k === 'c') cycle('color', OPTIONS.color);
-  else if (k === 'i') { settings.info = !settings.info; applySettings(); }
-  else if (k === 'f') toggleFull();
-  else if (k === '[') nudge(-0.25);
-  else if (k === ']') nudge(0.25);
-  else if (k === 's') surprise();
-  else if (k === 'enter' && !$('#welcome').hidden) showWelcome(false);
-  else if (k === ' ') { e.preventDefault(); send({ type: 'control', action: 'toggle' }); }
-  else if (k === 'escape') document.body.classList.remove('ui-on');
-  else return;
-  pokeUI();
-});
+
+function wireStage() {
+  addEventListener('mousemove', pokeUI);
+  addEventListener('mousedown', pokeUI);
+  addEventListener('dblclick', (e) => { if (document.body.classList.contains('on-stage') && !e.target.closest('#dock')) toggleFull(); });
+  addEventListener('resize', () => style?.relayout());
+  addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+    const onStage = document.body.classList.contains('on-stage');
+    const k = e.key.toLowerCase();
+    if (k === 'arrowright') stepStyle(1);
+    else if (k === 'arrowleft') stepStyle(-1);
+    else if (k === 'escape' || k === 'h') { if (home?.closePops()) return; onStage ? showHome() : enterStage(); }
+    else if (k === 'enter' && !onStage) enterStage();
+    else if (k === 'b') cycle('backdrop');
+    else if (k === 'l') cycle('light');
+    else if (k === 'c') cycle('color');
+    else if (k === 'i') { settings.info = !settings.info; applySettings(); }
+    else if (k === 'f') toggleFull();
+    else if (k === '[') nudge(-0.25);
+    else if (k === ']') nudge(0.25);
+    else if (k === 's') surprise();
+    else if (k === ' ') { e.preventDefault(); send({ type: 'control', action: 'toggle' }); }
+    else return;
+    pokeUI();
+  });
+}
 
 // ───────── frame loop ─────────
-let lastFrame = performance.now(), lastWord = null;
+let lastFrame = performance.now(), lastWord = null, frameNo = 0;
 function frame(ts) {
+  requestAnimationFrame(frame);
+  if (paused) return;
   const dt = Math.min(0.1, (ts - lastFrame) / 1000);
   lastFrame = ts;
+  frameNo++;
   let t = now();
-  if (demo && t > DEMO.track.duration) { demoStart = Date.now() / 1000; clock = { pos: 0, stamp: demoStart, playing: true }; t = now(); }
+  if (demo && t > DEMO.track.duration) { clock = { pos: 0, stamp: Date.now() / 1000, playing: true }; t = now(); }
 
   const s = cursor.at(t);
   style?.update(t, s);
 
-  // interlude dots
   const il = $('#interlude');
   const showRest = !!s.rest && !s.rest.outro && timeline.length > 0;
   il.classList.toggle('show', showRest);
@@ -342,20 +342,53 @@ function frame(ts) {
     lastWord = w;
   }
   app.edge.tick(dt);
-  if (settings.backdrop === 'gradient') app.bg.draw(ts / 1000, app.edge.pulse);
+  if (settings.backdrop === 'gradient' && (!PREVIEW || frameNo % 3 === 0)) app.bg.draw(ts / 1000, app.edge.pulse);
 
   const dur = track?.duration;
   $('#progress div').style.width = dur ? `${Math.min(100, ((t - LEAD) / dur) * 100)}%` : '0';
-  requestAnimationFrame(frame);
 }
 
-window.__lyricsDebug = () => ({ t: now(), clock, track: track && track.title, line: cursor.at(now()).line?.text });
 
 // ───────── boot ─────────
 applySettings();
 setStyle(settings.style);
-if (location.protocol.startsWith('http') && location.host) connect(); else startDemo();
-setTimeout(() => { if (!track) startDemo(); }, 1500);
+
+if (PREVIEW) {
+  // live preview inside a landing-page card: demo lyrics only, controlled by the parent page
+  document.body.classList.add('preview', 'on-stage');
+  startDemo(2.4);
+  addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type === 'palette') setPalette(m.pal);
+    else if (m.type === 'art' && m.url !== app.trackArt) {
+      app.trackArt = m.url;
+      swapLayer($('#bg-art'), 'art', m.url); swapLayer($('#center-art'), 'art', m.url);
+    }
+    else if (m.type === 'settings') {
+      const keep = { style: settings.style, backdrop: HERO ? m.settings.backdrop : 'gradient', light: HERO ? m.settings.light : 'off', info: false };
+      Object.assign(settings, m.settings, keep);
+      applySettings();
+    } else if (m.type === 'style') { setStyle(m.id); clock = { pos: 2.4, stamp: Date.now() / 1000, playing: true }; }
+    else if (m.type === 'pause') paused = true;
+    else if (m.type === 'play') paused = false;
+  });
+} else {
+  const api = {
+    settings, OPTIONS, STYLES,
+    get track() { return track; }, get lyrics() { return lyrics; }, get demo() { return demo; },
+    get playing() { return clock.playing; }, get screens() { return screenCount; }, get players() { return players; },
+    get connected() { return !!ws && ws.readyState === 1; }, get palette() { return app.palette; },
+    offset: () => (track ? offsets[track.id] || 0 : 0),
+    set(key, val) { settings[key] = val; applySettings(); },
+    setStyle, stepStyle, surprise, nudge, resetOffset, send, toggleFull, enterStage, showHome,
+    setScreens(on) { settings.allScreens = on; save(); send({ type: 'screens', action: on ? 'all' : 'one' }); },
+    toggleFav(id) { const f = settings.favs; const i = f.indexOf(id); i >= 0 ? f.splice(i, 1) : f.push(id); save(); },
+  };
+  home = initHome(api);
+  wireStage();
+  connect();
+  setTimeout(() => { if (!track) startDemo(); }, 1500);
+  if (SCREEN) { document.body.classList.add('extra-screen'); enterStage(); }
+  else showHome();
+}
 requestAnimationFrame(frame);
-pokeUI();
-if (!settings.welcomed && !FORCE_DEMO && !SCREEN) setTimeout(() => { if (!settings.welcomed) showWelcome(true); }, 600);

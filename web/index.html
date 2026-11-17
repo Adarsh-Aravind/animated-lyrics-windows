@@ -7,8 +7,9 @@
 <link rel="icon" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anton&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;700;800;900&family=JetBrains+Mono:wght@400;700&family=Nunito:wght@800;900&family=Tilt+Neon&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Nunito:wght@800;900&family=Tilt+Neon&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/home.css">
 </head>
 <body>
 <div id="stage">
@@ -30,52 +31,92 @@
   <div id="progress"><div></div></div>
 </div>
 
-<div id="ui">
-  <div class="panel">
-    <div class="row player">
-      <button data-ctl="prev" title="Previous">&#x23EE;</button>
-      <button data-ctl="toggle" title="Play / pause (Space)" id="btn-play">&#x23EF;</button>
-      <button data-ctl="next" title="Next">&#x23ED;</button>
-      <div class="now"><b id="ui-title">Nothing playing</b><span id="ui-sub"></span></div>
-      <button id="btn-full" title="Fullscreen (F)">&#x26F6;</button>
-    </div>
-    <div class="row quick">
-      <button class="big-btn" id="btn-surprise">&#x1F3B2; Surprise me</button>
-      <label class="tog"><input type="checkbox" id="opt-auto"> New style every song</label>
-      <label class="tog" id="screens-row" hidden><input type="checkbox" id="opt-screens"> &#x1F5A5; Show on all my screens</label>
-      <span class="grow"></span>
-      <span class="sync-label">Lyrics out of sync?</span>
-      <button class="mini" id="off-minus" title="Lyrics show before the singer ( [ key )">Too early</button>
-      <span id="off-val">in sync</span>
-      <button class="mini" id="off-plus" title="Lyrics show after the singer ( ] key )">Too late</button>
-    </div>
-    <div class="row"><label>Style <kbd>&larr;</kbd><kbd>&rarr;</kbd></label><div class="chips" id="opt-style"></div></div>
-    <div class="row"><label>Background <kbd>B</kbd></label><div class="chips" id="opt-backdrop"></div></div>
-    <div class="row"><label>Edge light <kbd>L</kbd></label><div class="chips" id="opt-light"></div></div>
-    <details id="more">
-      <summary>More options</summary>
-      <div class="row"><label>Light strength</label><input type="range" id="opt-intensity" min="0" max="1" step="0.05">
-        <label class="sep">Text size</label><input type="range" id="opt-size" min="0.6" max="1.6" step="0.05"></div>
-      <div class="row"><label>Colors</label><div class="chips" id="opt-color"></div>
-        <label class="sep tog"><input type="checkbox" id="opt-info"> Show song name <kbd>I</kbd></label></div>
-      <div class="row"><label>Font</label><div class="chips" id="opt-font"></div></div>
-      <div class="row"><label></label><button class="mini" id="btn-help">Show the welcome tips again</button></div>
-    </details>
-    <div class="hint" id="style-hint"></div>
-  </div>
+<!-- quick controls while the lyrics are playing -->
+<div id="dock" class="glass">
+  <button class="ic" id="dock-home" title="All styles &amp; settings (Esc)">
+    <svg viewBox="0 0 24 24"><path d="M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z"/></svg></button>
+  <span class="sep"></span>
+  <button class="ic" id="dock-prev" title="Previous style (←)"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <div class="dock-name"><b id="dock-style"></b><span id="dock-song"></span></div>
+  <button class="ic" id="dock-next" title="Next style (→)"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+  <span class="sep"></span>
+  <button class="ic" id="dock-surprise" title="Surprise me (S)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.4" class="f"/><circle cx="15" cy="15" r="1.4" class="f"/><circle cx="15" cy="9" r="1.4" class="f"/><circle cx="9" cy="15" r="1.4" class="f"/></svg></button>
+  <button class="ic" id="dock-play" title="Play / pause (Space)"><svg viewBox="0 0 24 24"><path class="f" d="M8 5v14l11-7z"/></svg></button>
+  <button class="ic" id="dock-full" title="Full screen (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
 </div>
 
-<div id="welcome" hidden>
-  <div class="card">
-    <h2>Hi &#x2728;</h2>
-    <p class="sub">Your music, with lyrics that move.</p>
-    <ol>
-      <li><b class="n">1</b><span>Play a song in <b>Spotify</b>, YouTube or any music app. The lyrics show up here by themselves.</span></li>
-      <li><b class="n">2</b><span><b>Move the mouse</b> to open the menu. Pick a style, or press <b>Surprise me</b>.</span></li>
-      <li><b class="n">3</b><span><b>Double-click</b> anywhere for full screen.</span></li>
-    </ol>
-    <button class="big-btn" id="welcome-ok">Let's go</button>
+<!-- landing screen -->
+<div id="home">
+  <header class="top">
+    <div class="brand"><img src="icon.png" alt=""><span>Animated Lyrics</span></div>
+    <nav class="glass tabs" id="tabs">
+      <button data-pop="pop-text">Text</button>
+      <button data-pop="pop-bg">Background</button>
+      <button data-pop="pop-light">Light</button>
+      <button data-pop="pop-screens" id="tab-screens" hidden>Screens</button>
+    </nav>
+    <div class="right">
+      <button class="glass status-chip" id="status-chip" data-pop="pop-status">
+        <span class="chip-players" id="chip-players"></span><span id="status-app">Looking for music…</span><span class="dot" id="status-dot"></span>
+      </button>
+      <button class="glass round" id="home-full" title="Full screen (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+  </header>
+
+  <!-- glass popovers -->
+  <div class="glass pop" id="pop-text">
+    <h4>Text colour</h4><div class="seg" id="opt-color"></div>
+    <h4>Font</h4><div class="seg wrap" id="opt-font"></div>
+    <h4>Size</h4><input type="range" id="opt-size" min="0.6" max="1.6" step="0.05">
+    <label class="switch"><input type="checkbox" id="opt-info"><i></i>Show the song name</label>
   </div>
+  <div class="glass pop" id="pop-bg">
+    <h4>Background</h4><div class="tiles" id="opt-backdrop"></div>
+  </div>
+  <div class="glass pop" id="pop-light">
+    <h4>Edge light</h4><div class="tiles" id="opt-light"></div>
+    <h4>Strength</h4><input type="range" id="opt-intensity" min="0" max="1" step="0.05">
+  </div>
+  <div class="glass pop" id="pop-screens">
+    <h4>Screens</h4>
+    <label class="switch"><input type="checkbox" id="opt-screens"><i></i><span>Show lyrics on all my screens</span></label>
+    <p class="note" id="screens-note"></p>
+  </div>
+  <div class="glass pop right-pop" id="pop-status">
+    <div class="st-head"><span id="st-icon"></span><div><b id="st-app">No music app</b><span id="st-state"><i class="dot"></i>Waiting</span></div></div>
+    <div class="players-row" id="st-players"></div>
+    <ul class="checks" id="st-checks"></ul>
+    <div class="sync glass-inner">
+      <button class="nudge" id="off-minus" title="Lyrics show too early ( [ )"><svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.6 4.7"/><path d="M5 4v5h5"/></svg><small>Too early</small></button>
+      <div class="val"><b id="off-val">0 s</b><span id="off-sub">Lyrics on their own timing</span></div>
+      <button class="nudge" id="off-plus" title="Lyrics show too late ( ] )"><svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 0 6.6 4.7"/><path d="M19 4v5h-5"/></svg><small>Too late</small></button>
+    </div>
+    <p class="note" id="off-note">Remembered for this song. <a href="#" id="off-reset">Reset</a></p>
+    <button class="pill-btn" id="btn-refetch">Search lyrics again</button>
+  </div>
+
+  <section class="hero">
+    <div class="hero-text">
+      <div class="eyebrow" id="hero-cat"></div>
+      <h1 id="hero-name"></h1>
+      <p id="hero-hint"></p>
+      <div class="actions">
+        <button class="cta" id="hero-start"><svg viewBox="0 0 24 24"><path class="f" d="M8 5v14l11-7z"/></svg>Start</button>
+        <button class="glass round" id="hero-fav" title="Favourite: ← / → only cycle favourites"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
+        <button class="glass round" id="hero-surprise" title="Surprise me (S)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.4" class="f"/><circle cx="15" cy="15" r="1.4" class="f"/><circle cx="15" cy="9" r="1.4" class="f"/><circle cx="9" cy="15" r="1.4" class="f"/></svg></button>
+      </div>
+      <label class="switch soft"><input type="checkbox" id="opt-auto"><i></i>New style every song</label>
+    </div>
+    <div class="hero-view">
+      <button class="glass arrow" id="hero-prev"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="frame glass" id="hero-frame"><iframe title="Style preview" tabindex="-1"></iframe></div>
+      <button class="glass arrow" id="hero-next"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      <div class="dots" id="hero-dots"></div>
+    </div>
+  </section>
+
+  <section class="gallery" id="gallery"></section>
+  <p class="foot-hint">Double-click anywhere for full screen · Esc shows this page · ← → switch styles</p>
 </div>
 
 <script type="module" src="js/main.js"></script>

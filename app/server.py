@@ -26,6 +26,7 @@ class Hub:
         self.lyrics = LyricsProvider()
         self.clients: set[web.WebSocketResponse] = set()
         self.main_clients: set[web.WebSocketResponse] = set()
+        self.players_msg: dict = {"type": "players", "list": []}
         self.track_msg: dict | None = None
         self.lyrics_msg: dict | None = None
         self.state_msg: dict | None = None
@@ -65,16 +66,27 @@ class Hub:
         for ws in dead:
             self.clients.discard(ws)
 
-    async def _load_track_extras(self, np: NowPlaying) -> None:
+    async def refetch(self) -> None:
+        """'Search lyrics again': forget the cached result for this song and look it up fresh."""
+        np = self._last
+        if not np or not np.has_track:
+            return
+        self.lyrics_msg = {"type": "lyrics", "id": np.track_id, "status": "loading", "lines": []}
+        await self.broadcast(self.lyrics_msg)
+        if self._lyrics_task and not self._lyrics_task.done():
+            self._lyrics_task.cancel()
+        self._lyrics_task = asyncio.create_task(self._load_track_extras(np, force=True))
+
+    async def _load_track_extras(self, np: NowPlaying, force: bool = False) -> None:
         tid = np.track_id
-        if not np.art:
+        if not np.art and not force:
             art = await itunes_artwork(await self.http(), np.title, np.artist)
             if art and self.track_msg and self.track_msg["id"] == tid:
                 self.art[tid] = art
                 self.track_msg["art"] = f"/art/{tid}"
                 await self.broadcast(self.track_msg)
         try:
-            lyr = await self.lyrics.get(tid, np.title, np.artist, np.album, np.duration)
+            lyr = await self.lyrics.get(tid, np.title, np.artist, np.album, np.duration, force=force)
         except Exception as e:
             log.warning("lyrics lookup failed: %s", e)
             lyr = {"status": "error", "lines": []}
@@ -87,6 +99,10 @@ class Hub:
         np = await self.media.poll()
         prev = self._last
         self._last = np
+        players = [{**pl, "active": pl["app"] == np.app and np.has_track} for pl in self.media.players]
+        if players != self.players_msg.get("list"):
+            self.players_msg = {"type": "players", "list": players}
+            await self.broadcast(self.players_msg)
         now = time.time()
 
         if not np.has_track:
@@ -150,6 +166,7 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
     if is_main:
         hub.main_clients.add(ws)
     await ws.send_str(json.dumps({"type": "hello", "screens": hub.screen_count(), "settings": hub.settings}))
+    await ws.send_str(json.dumps(hub.players_msg))
     for m in (hub.track_msg, hub.lyrics_msg, hub.state_msg):
         if m:
             await ws.send_str(json.dumps(m))
@@ -178,6 +195,8 @@ async def ws_handler(request: web.Request) -> web.WebSocketResponse:
                                 await other.send_str(out)
                             except Exception:
                                 hub.clients.discard(other)
+                elif kind == "refetch":
+                    await hub.refetch()
                 elif kind == "screens" and hub.on_screens:
                     try:
                         await asyncio.get_running_loop().run_in_executor(None, hub.on_screens, data.get("action"))

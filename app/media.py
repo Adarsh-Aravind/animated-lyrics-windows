@@ -71,6 +71,7 @@ class MediaWatcher:
     def __init__(self) -> None:
         self._mgr: SessionManager | None = None
         self._art_cache: dict[str, bytes | None] = {}
+        self.players: list[dict] = []   # every app with a media session: {"app", "playing"}
 
     async def _manager(self) -> SessionManager:
         if self._mgr is None:
@@ -102,6 +103,14 @@ class MediaWatcher:
     async def poll(self) -> NowPlaying:
         mgr = await self._manager()
         session = self._pick_session(mgr)
+        players = []
+        for s_ in mgr.get_sessions():
+            try:
+                players.append({"app": s_.source_app_user_model_id or "",
+                                "playing": s_.get_playback_info().playback_status == PlaybackStatus.PLAYING})
+            except Exception:
+                pass
+        self.players = players
         np = NowPlaying(stamp=dt.datetime.now(dt.timezone.utc).timestamp())
         if session is None:
             return np
