@@ -12,6 +12,7 @@ from aiohttp import web
 
 from .lyrics import LyricsProvider, itunes_artwork
 from .media import MediaWatcher, NowPlaying
+from .voices import Voices
 from .paths import DATA, WEB
 
 log = logging.getLogger("server")
@@ -24,6 +25,7 @@ class Hub:
     def __init__(self) -> None:
         self.media = MediaWatcher()
         self.lyrics = LyricsProvider()
+        self.voices = Voices()
         self.clients: set[web.WebSocketResponse] = set()
         self.main_clients: set[web.WebSocketResponse] = set()
         self.players_msg: dict = {"type": "players", "list": []}
@@ -85,15 +87,30 @@ class Hub:
                 self.art[tid] = art
                 self.track_msg["art"] = f"/art/{tid}"
                 await self.broadcast(self.track_msg)
+        # who's credited (for duets in the Chat style), looked up alongside the lyrics, never holding them up long
+        voices_task = asyncio.create_task(self.voices.lookup(await self.http(), np.title, np.artist))
         try:
             lyr = await self.lyrics.get(tid, np.title, np.artist, np.album, np.duration, force=force)
         except Exception as e:
             log.warning("lyrics lookup failed: %s", e)
             lyr = {"status": "error", "lines": []}
+        try:
+            voices = await asyncio.wait_for(asyncio.shield(voices_task), 4)
+        except Exception:
+            voices = []
         if self.track_msg and self.track_msg["id"] == tid:
-            self.lyrics_msg = {"type": "lyrics", "id": tid, **lyr}
+            self.lyrics_msg = {"type": "lyrics", "id": tid, **lyr, "voices": voices}
             await self.broadcast(self.lyrics_msg)
             log.info("lyrics: %s (%d lines) for %s - %s", lyr["status"], len(lyr["lines"]), np.artist, np.title)
+        if not voices_task.done():
+            # MusicBrainz was slow: send the singers as soon as they're known (cached for next time either way)
+            try:
+                late = await voices_task
+            except Exception:
+                late = []
+            if late and self.track_msg and self.track_msg["id"] == tid and self.lyrics_msg and self.lyrics_msg.get("id") == tid:
+                self.lyrics_msg = {**self.lyrics_msg, "voices": late}
+                await self.broadcast(self.lyrics_msg)
 
     async def tick(self) -> None:
         np = await self.media.poll()

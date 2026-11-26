@@ -262,6 +262,19 @@ export function initHome(api) {
   $('#dock-surprise').onclick = () => api.surprise();
   $('#dock-play').onclick = () => api.send({ type: 'control', action: 'toggle' });
   $('#dock-full').onclick = () => api.toggleFull();
+  // timing nudges right on the lyrics screen: click for 0.25 s, hold to keep going
+  for (const [id, d] of [['#dock-early', -0.25], ['#dock-late', 0.25]]) {
+    const b = $(id);
+    let hold = null, rep = null;
+    const stop = () => { clearTimeout(hold); clearInterval(rep); hold = rep = null; };
+    b.addEventListener('pointerdown', (e) => {
+      if (b.disabled || e.button !== 0) return;
+      api.nudge(d);
+      hold = setTimeout(() => { rep = setInterval(() => api.nudge(d), 160); }, 420);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+  }
+  $('#dock-off').onclick = () => api.resetOffset();
   $('#home-full').onclick = () => api.toggleFull();
   const PLAY = '<svg viewBox="0 0 24 24"><path class="f" d="M8 5v14l11-7z"/></svg>';
   const PAUSE = '<svg viewBox="0 0 24 24"><path class="f" d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
@@ -278,6 +291,11 @@ export function initHome(api) {
     const t = api.track;
     $('#dock-song').textContent = t && !api.demo ? `${t.title} · ${t.artist}` : 'Waiting for a song';
     $('#dock-play').innerHTML = api.playing && !api.demo ? PAUSE : PLAY;
+    const off = api.offset(), real = !!t && !api.demo;
+    $('#dock-off-val').textContent = off ? `${Math.abs(off).toFixed(2).replace(/\.?0+$/, '')} s` : '0 s';
+    $('#dock-off-sub').textContent = !real ? 'no song' : off === 0 ? 'in sync' : off < 0 ? 'later' : 'sooner';
+    $('#dock-off').classList.toggle('moved', !!off);
+    $('#dock-early').disabled = $('#dock-late').disabled = $('#dock-off').disabled = !real;
     renderStatus();
     if (openPop) renderPops();
     if (visible) feedAll();

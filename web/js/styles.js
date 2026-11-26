@@ -983,6 +983,9 @@ class Chat extends Base {
       this.side.push(side);
       left--;
     });
+    // a duet with a woman and a man credited: her lines are sent (right), his are received (left)
+    const g = (this.app.voices || []).map((v) => v.gender);
+    if (g.includes('female') && g.includes('male')) this.side = this.duetSides(rand, g[0]);
     // every so often a line arrives as an attachment, with the lyric as its caption
     this.att = [];
     let gap = 2, lastKind = null;
@@ -997,6 +1000,48 @@ class Chat extends Base {
       } else gap++;
       this.att.push(a);
     });
+  }
+  /**
+   * Lyrics don't say who sings which line, so this is a guess that reads like a real duet: each section
+   * (split at blank lines and pauses) belongs to one voice, sections mostly take turns but not always,
+   * some are shared line by line, a repeated chorus keeps its singer, and bracketed ad-libs answer back.
+   */
+  duetSides(rand, lead) {
+    const L = this.lines, F = 1, M = 0, side = new Array(L.length);
+    const norm = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    // a line heard before (a chorus, a hook) goes back to whoever sang it first
+    const heard = new Set();
+    const rep = L.map((l) => { const k = norm(l.text); const r = heard.has(k); heard.add(k); return r; });
+    const secs = [];
+    L.forEach((l, i) => { if (i === 0 || l.brk || rep[i] !== rep[i - 1]) secs.push([]); secs[secs.length - 1].push(i); });
+    const parts = []; // break very long new sections so one voice doesn't hold a dozen lines in a row
+    for (const sec of secs) {
+      if (rep[sec[0]] || sec.length <= 10) { parts.push(sec); continue; }
+      const n = Math.ceil(sec.length / 8), size = Math.ceil(sec.length / n);
+      for (let k = 0; k < sec.length; k += size) parts.push(sec.slice(k, k + size));
+    }
+    const first = new Map();
+    let who = lead === 'female' ? F : lead === 'male' ? M : rand() < 0.5 ? F : M;
+    if (rand() < 0.25) who = 1 - who; // the headliner usually opens, not always
+    let started = false;
+    for (const sec of parts) {
+      if (rep[sec[0]]) { sec.forEach((i) => { side[i] = first.get(norm(L[i].text)) ?? who; }); continue; }
+      if (started && rand() < 0.7) who = 1 - who;
+      started = true;
+      let pat;
+      if (sec.length >= 4 && rand() < 0.25) { // shared: the two trade lines in short runs
+        pat = [];
+        let w = who, run = 1 + Math.floor(rand() * 2);
+        for (let j = 0; j < sec.length; j++) {
+          if (run <= 0) { w = 1 - w; run = 1 + Math.floor(rand() * 2); }
+          pat.push(w); run--;
+        }
+      } else pat = sec.map(() => who);
+      sec.forEach((i, j) => { side[i] = pat[j]; const k = norm(L[i].text); if (!first.has(k)) first.set(k, pat[j]); });
+    }
+    // bracketed ad-libs, "(yeah)", come from the other voice
+    L.forEach((l, i) => { if (/^\s*\(.*\)\s*$/.test(l.text)) side[i] = 1 - side[i]; });
+    return side;
   }
   /** Build the attachment part of a bubble. Returns live parts for voice notes. */
   attachment(box, att, L, me) {

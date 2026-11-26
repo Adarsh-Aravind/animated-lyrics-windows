@@ -39,9 +39,10 @@ export function buildTimeline(lyrics, duration) {
   }
 
   const out = [];
+  let blank = false; // an empty lyric line usually marks the start of a new section
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i];
-    if (!r.text || !r.text.trim()) continue;
+    if (!r.text || !r.text.trim()) { blank = true; continue; }
     let next = null;
     for (let j = i + 1; j < raw.length; j++) {
       if (raw[j].t > r.t + 0.01) { next = raw[j].t; break; }
@@ -76,7 +77,10 @@ export function buildTimeline(lyrics, duration) {
         acc += d;
       }
     }
-    out.push({ start, end, sungEnd, text: r.text, words, index: out.length });
+    const prev = out[out.length - 1];
+    const brk = !prev || blank || start - prev.sungEnd > 2.2;
+    blank = false;
+    out.push({ start, end, sungEnd, text: r.text, words, index: out.length, brk });
   }
   // Collapse duplicated timestamps / keep ordering sane.
   for (let i = 0; i < out.length - 1; i++) out[i].end = Math.max(out[i].start + 0.3, Math.min(out[i].end, out[i + 1].start));

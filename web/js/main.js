@@ -105,7 +105,7 @@ function startDemo(offset = 0) {
 // ───────── track / lyrics handling ─────────
 async function setTrack(t) {
   track = t;
-  Object.assign(app, { trackTitle: t.title, trackArtist: t.artist, trackArt: t.art });
+  Object.assign(app, { trackTitle: t.title, trackArtist: t.artist, trackArt: t.art, voices: [] });
   lyrics = null; timeline = []; cursor.set([]);
   style?.setTimeline([]);
   $('#info-title').textContent = t.title;
@@ -135,6 +135,7 @@ function setPalette(pal) {
 function setLyrics(l) {
   if (!track || l.id !== track.id) return;
   lyrics = l;
+  app.voices = l.voices || []; // credited singers + gender, for duets in the Chat style
   let src = l;
   // slowed / sped-up / nightcore edits: stretch the original song's timing to this version's length
   const ratio = l.duration && track.duration ? track.duration / l.duration : 1;
@@ -249,13 +250,32 @@ function applySettings() {
   save();
   requestAnimationFrame(() => style?.relayout());
 }
+let toastTimer;
+function toast(text) {
+  const el = $('#toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1400);
+}
+function offsetText() {
+  const o = track ? offsets[track.id] || 0 : 0;
+  if (!o) return 'Lyrics timing: in sync';
+  return `Lyrics ${Math.abs(o).toFixed(2).replace(/\.?0+$/, '')} s ${o < 0 ? 'later' : 'sooner'}`;
+}
 function nudge(d) {
   if (!track || demo) return;
   offsets[track.id] = Math.round(((offsets[track.id] || 0) + d) * 100) / 100;
   if (offsets[track.id] === 0) delete offsets[track.id];
   saveOffsets();
+  if (document.body.classList.contains('on-stage')) toast(offsetText());
 }
-function resetOffset() { if (track && offsets[track.id]) { delete offsets[track.id]; saveOffsets(); } }
+function resetOffset() {
+  if (track && offsets[track.id]) {
+    delete offsets[track.id]; saveOffsets();
+    if (document.body.classList.contains('on-stage')) toast(offsetText());
+  }
+}
 function surprise(stylesOnly = false) {
   const pick = (arr, not) => { const c = arr.filter((x) => x !== not); return c[Math.floor(Math.random() * c.length)]; };
   if (!stylesOnly) {

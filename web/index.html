@@ -24,6 +24,7 @@
   <div id="lyrics"></div>
   <div id="interlude"><i></i><i></i><i></i></div>
   <div id="message"></div>
+  <div id="toast"></div>
   <div id="info">
     <div id="info-art"></div>
     <div><div id="info-title"></div><div id="info-artist"></div></div>
@@ -44,6 +45,12 @@
   <button class="ic" id="dock-surprise" title="Surprise me (S)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><circle cx="9" cy="9" r="1.4" class="f"/><circle cx="15" cy="15" r="1.4" class="f"/><circle cx="15" cy="9" r="1.4" class="f"/><circle cx="9" cy="15" r="1.4" class="f"/></svg></button>
   <button class="ic" id="dock-play" title="Play / pause (Space)"><svg viewBox="0 0 24 24"><path class="f" d="M8 5v14l11-7z"/></svg></button>
   <button class="ic" id="dock-full" title="Full screen (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  <span class="sep"></span>
+  <div class="dock-sync">
+    <button class="dock-nudge" id="dock-early" title="Lyrics show too early: show them later ( [ ). Hold to keep going."><svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 1-6.6 4.7"/><path d="M5 4v5h5"/></svg><span>Too early</span></button>
+    <button class="dock-off" id="dock-off" title="Lyrics timing for this song. Click to reset."><b id="dock-off-val">0 s</b><span id="dock-off-sub">in sync</span></button>
+    <button class="dock-nudge" id="dock-late" title="Lyrics show too late: show them sooner ( ] ). Hold to keep going."><span>Too late</span><svg viewBox="0 0 24 24"><path d="M12 5a7 7 0 1 0 6.6 4.7"/><path d="M19 4v5h-5"/></svg></button>
+  </div>
 </div>
 
 <!-- landing screen -->

@@ -150,6 +150,25 @@ body.extra-screen #dock { display: none; }
 .dock-name { min-width: 120px; max-width: 240px; text-align: center; padding: 0 6px; }
 .dock-name b { display: block; font-size: 14px; }
 .dock-name span { display: block; font-size: 11.5px; color: rgba(255,255,255,.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-sync { display: flex; align-items: center; gap: 2px; flex: none; }
+.dock-nudge { height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 99px; background: none; color: #fff;
+  font: 600 12.5px/1 Inter, sans-serif; cursor: pointer; transition: background .2s, transform .1s; touch-action: none; }
+.dock-nudge svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.dock-nudge:hover { background: rgba(255,255,255,.16); }
+.dock-nudge:active { transform: scale(.95); }
+.dock-off { min-width: 62px; border: 0; background: none; color: #fff; text-align: center; padding: 2px 4px; border-radius: 10px; cursor: pointer; }
+.dock-off b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+.dock-off span { display: block; font-size: 10.5px; color: rgba(255,255,255,.55); }
+.dock-off.moved span { color: #8ef0b0; }
+.dock-off:hover { background: rgba(255,255,255,.1); }
+#dock button:disabled { opacity: .35; cursor: default; background: none; }
+
+/* timing message on the lyrics screen */
+#toast { position: absolute; left: 50%; top: 5vh; z-index: 12; transform: translate(-50%, -10px); padding: 12px 24px; border-radius: 99px; pointer-events: none;
+  background: rgba(12,12,18,.82); backdrop-filter: blur(18px) saturate(1.4); border: 1px solid rgba(255,255,255,.18); box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  font: 700 17px/1.2 Inter, sans-serif; font-variant-numeric: tabular-nums; color: #fff; opacity: 0; transition: opacity .25s, transform .3s cubic-bezier(.2,.9,.3,1); }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+body.preview #toast { display: none; }
 
 /* previews rendered inside the cards */
 body.preview #dock, body.preview #home, body.preview #info, body.preview #badge, body.preview #progress, body.preview #message { display: none !important; }

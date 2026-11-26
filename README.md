@@ -21,7 +21,7 @@
 - **Follows any player.** Spotify, Apple Music, YouTube / YouTube Music in a browser, SoundCloud, Tidal, Deezer… anything that shows up in the Windows media controls. No login, no API keys.
 - **Synced lyrics.** Time-synced lyrics come from [LRCLIB](https://lrclib.net), and the timing follows the player exactly, including pauses and seeks.
 - **18 animation styles.** Glide · Chat · Pop · Stack · Spotlight · Bounce · Love · Wave · Scatter · Depth · Constellation · Focus · Neon · Collage · Board · Glitch · Type · Cinema
-- **Chat style.** The song plays out as two people texting: typing dots, bubbles from both sides, read ticks and the odd reaction. Some lines arrive as attachments with the lyric as the caption: a photo cut from the album cover, a voice note that plays along with a transcript, a document, or a shared location on a map.
+- **Chat style.** The song plays out as two people texting: typing dots, bubbles from both sides, read ticks and the odd reaction. Some lines arrive as attachments with the lyric as the caption: a photo cut from the album cover, a voice note that plays along with a transcript, a document, or a shared location on a map. In a duet between a woman and a man (going by the song's credits on [MusicBrainz](https://musicbrainz.org)), her parts are sent and his are received. Lyrics don't say who sings each line, so it's split by verse and chorus, with a repeated chorus kept with the same singer.
 - **Landing screen.** Every style plays its own live preview in a gallery, with a large preview of the one you pick. Star your favourites so ← / → only cycle through those.
 - **Glass menus.** Text, Background, Light and Screens settings in frosted-glass panels.
 - **Player status.** Spotify and Apple Music icons with live status lights. The status panel shows every open player, which one the lyrics are following, whether lyrics were found and how they're timed, *Too early / Too late* sync buttons, and *Search lyrics again*.
@@ -46,7 +46,7 @@
 
 ## Using it
 
-The app opens on the landing screen. Pick a style from the gallery and press **Start**. While the lyrics are playing, move the mouse to bring up the dock (style switcher, surprise, play/pause, full screen). Press **Esc** to return to the landing screen. Double-click anywhere for full screen.
+The app opens on the landing screen. Pick a style from the gallery and press **Start**. While the lyrics are playing, move the mouse to bring up the dock (style switcher, surprise, play/pause, full screen, and *Too early / Too late* to fix the timing without leaving the lyrics; hold to keep adjusting, click the number to reset). Press **Esc** to return to the landing screen. Double-click anywhere for full screen.
 
 | Key | Action |
 |---|---|
