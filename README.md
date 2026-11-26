@@ -21,7 +21,7 @@
 - **Follows any player.** Spotify, Apple Music, YouTube / YouTube Music in a browser, SoundCloud, Tidal, Deezer… anything that shows up in the Windows media controls. No login, no API keys.
 - **Synced lyrics.** Time-synced lyrics come from [LRCLIB](https://lrclib.net), and the timing follows the player exactly, including pauses and seeks.
 - **18 animation styles.** Glide · Chat · Pop · Stack · Spotlight · Bounce · Love · Wave · Scatter · Depth · Constellation · Focus · Neon · Collage · Board · Glitch · Type · Cinema
-- **Chat style.** The song plays out as two people texting: typing dots, bubbles from both sides, read ticks and the odd reaction.
+- **Chat style.** The song plays out as two people texting: typing dots, bubbles from both sides, read ticks and the odd reaction. Some lines arrive as attachments with the lyric as the caption: a photo cut from the album cover, a voice note that plays along with a transcript, a document, or a shared location on a map.
 - **Landing screen.** Every style plays its own live preview in a gallery, with a large preview of the one you pick. Star your favourites so ← / → only cycle through those.
 - **Glass menus.** Text, Background, Light and Screens settings in frosted-glass panels.
 - **Player status.** Spotify and Apple Music icons with live status lights. The status panel shows every open player, which one the lyrics are following, whether lyrics were found and how they're timed, *Too early / Too late* sync buttons, and *Search lyrics again*.

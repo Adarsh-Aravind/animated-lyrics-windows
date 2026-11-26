@@ -947,6 +947,7 @@ class Constellation extends Base {
 
 // ───────────────────────── Chat: the song as a two-person chat ─────────────────────────
 const REACTIONS = ['❤️', '🔥', '😭', '✨', '🥹', '💯'];
+const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const clockTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 class Chat extends Base {
   static id = 'chat'; static label = 'Chat'; static hint = 'WhatsApp-style bubbles: two people texting the song back and forth';
@@ -982,6 +983,90 @@ class Chat extends Base {
       this.side.push(side);
       left--;
     });
+    // every so often a line arrives as an attachment, with the lyric as its caption
+    this.att = [];
+    let gap = 2, lastKind = null;
+    const KINDS = ['photo', 'voice', 'photo', 'doc', 'voice', 'map'];
+    this.lines.forEach((L, i) => {
+      let a = null;
+      if (i > 0 && gap >= 2 && L.words.length >= 3 && rand() < 0.34) {
+        let kind = KINDS[Math.floor(rand() * KINDS.length)];
+        if (kind === lastKind) kind = KINDS[(KINDS.indexOf(kind) + 1) % KINDS.length];
+        a = { kind, seed: rand() };
+        lastKind = kind; gap = 0;
+      } else gap++;
+      this.att.push(a);
+    });
+  }
+  /** Build the attachment part of a bubble. Returns live parts for voice notes. */
+  attachment(box, att, L, me) {
+    const r = seeded(Math.floor(att.seed * 4294967295));
+    if (att.kind === 'photo') {
+      const ph = el('div', 'ch-photo');
+      if (this.app.trackArt) {
+        ph.style.backgroundImage = `url("${this.app.trackArt}")`;
+        ph.style.backgroundSize = `${130 + Math.round(r() * 90)}%`;
+        ph.style.backgroundPosition = `${Math.round(r() * 100)}% ${Math.round(r() * 100)}%`;
+      } else ph.classList.add('noart');
+      box.appendChild(ph);
+    } else if (att.kind === 'voice') {
+      const v = el('div', 'ch-voice');
+      const btn = el('div', 'ch-play');
+      btn.innerHTML = '<svg class="play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg><svg class="pause" viewBox="0 0 24 24"><path d="M6 4h4.2v16H6zM13.8 4H18v16h-4.2z"/></svg>';
+      const wave = el('div', 'ch-wave');
+      const bars = Array.from({ length: 34 }, (_, k) => {
+        const bar = el('i');
+        const h = 0.18 + 0.82 * Math.abs(Math.sin(k * 0.55 + r() * 2.5)) * (0.45 + r() * 0.55);
+        bar.style.height = `${Math.round(h * 100)}%`;
+        wave.appendChild(bar);
+        return bar;
+      });
+      const dot = el('b', 'ch-dot');
+      wave.appendChild(dot);
+      const dur = Math.max(1, L.sungEnd - L.start);
+      const time = el('span', 'ch-dur', fmtDur(dur));
+      v.append(btn, wave, time);
+      box.append(v, el('div', 'ch-tlabel', 'Transcript'));
+      return { bars, dot, time, btn, dur, lit: -1, playing: null, sec: -1 };
+    } else if (att.kind === 'doc') {
+      const ext = ['pdf', 'docx', 'txt', 'pdf'][Math.floor(r() * 4)];
+      const name = L.words.map((w) => w.text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean).slice(0, 4).join('_') || 'lyrics';
+      const pages = 1 + Math.floor(r() * 9);
+      const size = ext === 'txt' ? `${2 + Math.floor(r() * 30)} KB` : `${(0.2 + r() * 2.8).toFixed(1)} MB`;
+      const d = el('div', 'ch-doc');
+      const info = el('div', 'ch-docinfo');
+      info.append(el('b', null, `${name}.${ext}`), el('span', null, `${ext === 'txt' ? '' : `${pages} page${pages > 1 ? 's' : ''} · `}${size} · ${ext.toUpperCase()}`));
+      d.append(el('div', `ch-docic ${ext}`, ext.toUpperCase()), info);
+      box.appendChild(d);
+    } else if (att.kind === 'map') {
+      const m = el('div', 'ch-map');
+      const tiles = el('div', 'ch-tiles');
+      tiles.style.setProperty('--rot', `${Math.round(r() * 70 - 35)}deg`);
+      tiles.style.setProperty('--mx', `${Math.round(r() * 40)}vh`);
+      tiles.style.setProperty('--my', `${Math.round(r() * 40)}vh`);
+      const pin = el('div', 'ch-pin');
+      pin.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.6A2.6 2.6 0 1 1 12 6.4a2.6 2.6 0 0 1 0 5.2z"/></svg>';
+      m.append(tiles, pin);
+      const place = el('div', 'ch-place');
+      place.append(el('b', null, me ? 'Live location' : 'Location'),
+        el('span', null, me ? `Sharing for ${[15, 30, 60][Math.floor(r() * 3)]} min` : `${(0.3 + r() * 4).toFixed(1)} km away`));
+      box.append(m, place);
+    }
+    return null;
+  }
+  /** A voice note plays along with the line: bars fill, the dot moves and the timer counts. */
+  voiceTick(v, L, t) {
+    const p = clamp((t - L.start) / v.dur);
+    const playing = t >= L.start && t < L.sungEnd;
+    const lit = Math.round(p * v.bars.length);
+    if (lit !== v.lit) {
+      v.bars.forEach((b, k) => b.classList.toggle('on', k < lit));
+      v.lit = lit;
+    }
+    v.dot.style.left = `${(p * 100).toFixed(1)}%`;
+    if (playing !== v.playing) { v.playing = playing; v.btn.classList.toggle('playing', playing); }
+    const sec = playing ? Math.floor(t - L.start) : -1;
+    if (sec !== v.sec) { v.sec = sec; v.time.textContent = fmtDur(playing ? t - L.start : v.dur); }
   }
   relayout() {}
   flip(mutate) {
@@ -1000,17 +1085,20 @@ class Chat extends Base {
     const me = this.side[i] === 1;
     const prev = this.feed.lastElementChild;
     const cont = prev && !prev.classList.contains('ch-typing') && prev.classList.contains(me ? 'me' : 'them');
-    const b = el('div', `ch-msg ${me ? 'me' : 'them'}${cont ? ' cont' : ''}`);
+    const att = this.att[i];
+    const b = el('div', `ch-msg ${me ? 'me' : 'them'}${cont ? ' cont' : ''}${att ? ` att att-${att.kind}` : ''}`);
     const txt = el('div', 'ch-text');
-    const ws = L.words.map((w) => { const s = el('span', 'cw3', w.text); txt.append(s, ' '); return s; });
+    const voice = att ? this.attachment(txt, att, L, me) : null;
+    const cap = att ? txt.appendChild(el('div', 'ch-cap')) : txt;
+    const ws = L.words.map((w) => { const s = el('span', 'cw3', w.text); cap.append(s, ' '); return s; });
     const meta = el('span', 'ch-meta', clockTime());
     if (me) meta.appendChild(el('span', 'ch-ticks', '✓✓'));
-    txt.appendChild(meta);
+    cap.appendChild(meta);
     b.appendChild(txt);
     this.flip(() => this.feed.appendChild(b));
     if (animate) b.animate([{ opacity: 0, transform: `translateY(14px) scale(.85)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(.2,1.3,.4,1)' });
     const react = hash(L.text + i) > 0.82 ? REACTIONS[Math.floor(hash(L.text) * REACTIONS.length)] : null;
-    this.msgs.set(i, { b, ws, on: ws.map(() => false), read: false, react, reacted: false });
+    this.msgs.set(i, { b, ws, voice, on: ws.map(() => false), read: false, react, reacted: false });
   }
   setTyping(side) {
     if (this.typing && this.typing.side === side) return;
@@ -1045,8 +1133,9 @@ class Chat extends Base {
     else if (this.typing && (!nx || t < nx.start - 1.3)) this.clearTyping();
     // light words in the live bubble, mark read, add the odd reaction
     for (const [i, m] of this.msgs) {
-      if (i < idx - 1 && m.read && (!m.react || m.reacted)) continue;
+      if (i < idx - 1 && m.read && (!m.react || m.reacted) && !(m.voice && m.voice.playing)) continue;
       const L = this.lines[i];
+      if (m.voice) this.voiceTick(m.voice, L, t);
       L.words.forEach((w, k) => {
         const on = t >= w.start || i < idx;
         if (on !== m.on[k]) { m.on[k] = on; m.ws[k].classList.toggle('on', on); }
