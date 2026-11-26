@@ -66,6 +66,11 @@ body:not(.on-stage) #home { transition-delay: 0s; }
 .sw.blur::after, .sw.cover::after { content: ""; position: absolute; inset: 0; background: inherit; }
 .sw.blur { filter: blur(0); } .sw.blur::after { filter: blur(8px) brightness(.7) saturate(1.5); transform: scale(1.3); }
 .sw.cover::after { inset: 8px 34%; border-radius: 4px; filter: brightness(.7); }
+.sw.water { background: radial-gradient(60% 80% at 30% 30%, var(--c1), transparent), radial-gradient(60% 80% at 75% 70%, var(--c3), transparent), var(--d1); background-size: cover; background-position: center; }
+.sw.water::after { content: ""; position: absolute; inset: -100% 0 0; filter: blur(1.5px);
+  background: repeating-linear-gradient(100deg, transparent 0 9px, rgba(255,255,255,.18) 11px, transparent 14px 26px, rgba(255,255,255,.1) 29px, transparent 33px 44px);
+  animation: sheet 9s linear infinite; }
+@keyframes sheet { to { transform: translateY(50%); } }
 .sw.light-flow::after { content: ""; position: absolute; inset: -60%; background: conic-gradient(transparent 0 30%, var(--c1) 45%, #fff 50%, transparent 51% 80%, var(--c2) 95%, #fff 100%); animation: spin 3s linear infinite; }
 .sw.light-flow::before { content: ""; position: absolute; inset: 3px; background: #000; border-radius: 8px; z-index: 1; box-shadow: inset 0 0 10px rgba(0,0,0,.9); }
 .sw.light-glow { box-shadow: inset 0 0 18px 4px var(--c1), inset 0 0 30px 6px var(--c2); animation: breathe 3s ease-in-out infinite; }

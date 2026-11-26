@@ -81,7 +81,7 @@ export function initHome(api) {
     for (const [val, label] of OPTIONS[key]) {
       const b = el('button', `tile${settings[key] === val ? ' sel' : ''}`);
       const sw = el('div', `sw ${swClass(val)}`);
-      if ((val === 'blur' || val === 'cover') && art) sw.style.backgroundImage = `url("${art}")`;
+      if ((val === 'blur' || val === 'cover' || val === 'water') && art) sw.style.backgroundImage = `url("${art}")`;
       b.append(sw, document.createTextNode(label));
       b.onclick = () => api.set(key, val);
       box.appendChild(b);

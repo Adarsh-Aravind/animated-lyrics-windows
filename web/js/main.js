@@ -1,6 +1,6 @@
 import { buildTimeline, Cursor, LEAD } from './engine.js';
 import { STYLES } from './styles.js';
-import { GradientBG, EdgeLight, swapLayer, paletteFromImage, fallbackPalette, applyPaletteVars } from './visuals.js';
+import { GradientBG, WaterBG, EdgeLight, swapLayer, paletteFromImage, fallbackPalette, applyPaletteVars } from './visuals.js';
 import { initHome } from './home.js';
 
 const $ = (s) => document.querySelector(s);
@@ -13,7 +13,7 @@ const HERO = Q.has('hero');          // the big preview on the landing page
 // ───────── settings ─────────
 const DEFAULTS = { style: 'glide', backdrop: 'gradient', light: 'flow', color: 'album', font: 'default', size: 1, intensity: 0.85, info: true, auto: false, favs: [] };
 export const OPTIONS = {
-  backdrop: [['gradient', 'Gradient'], ['blur', 'Blurred cover'], ['cover', 'Album cover'], ['black', 'Black']],
+  backdrop: [['gradient', 'Gradient'], ['blur', 'Blurred cover'], ['cover', 'Album cover'], ['water', 'Water'], ['black', 'Black']],
   light: [['flow', 'Flow'], ['glow', 'Glow'], ['sides', 'Side lights'], ['off', 'Off']],
   color: [['album', 'Album colours'], ['white', 'White']],
   font: [['default', 'Style default'], ['Inter', 'Sans'], ['Nunito', 'Rounded'], ['"Instrument Serif"', 'Serif'], ['Anton', 'Condensed'], ['"JetBrains Mono"', 'Mono']],
@@ -65,6 +65,7 @@ function adoptRemote(data) {
 const app = {
   edge: new EdgeLight($('#edge')),
   bg: new GradientBG($('#bg-gradient')),
+  water: new WaterBG($('#bg-water')),
   trackTitle: '', trackArtist: '', trackArt: null,
   palette: fallbackPalette('preview!', true),
 };
@@ -113,6 +114,7 @@ async function setTrack(t) {
   $('#info-art').style.backgroundImage = t.art ? `url("${t.art}")` : '';
   swapLayer($('#bg-art'), 'art', t.art);
   swapLayer($('#center-art'), 'art', t.art);
+  app.water.setArt(t.art);
   home?.refresh();
   // demo gets a colourful preview palette; a real song without a cover gets soft white, never random colours
   let pal = t.id === 'demo' ? fallbackPalette('preview!', true) : fallbackPalette();
@@ -126,6 +128,7 @@ function setPalette(pal) {
   app.palette = pal;
   applyPaletteVars(pal, settings.color);
   app.bg.setPalette(pal);
+  app.water.setPalette(pal);
   home?.paletteChanged(pal);
 }
 
@@ -234,7 +237,7 @@ function cycle(key, dir = 1) {
 }
 function applySettings() {
   const b = document.body;
-  b.classList.remove('bd-gradient', 'bd-blur', 'bd-cover', 'bd-black');
+  b.classList.remove('bd-gradient', 'bd-blur', 'bd-cover', 'bd-water', 'bd-black');
   b.classList.add(`bd-${settings.backdrop}`);
   b.classList.toggle('show-info', !!settings.info);
   app.edge.setMode(settings.light);
@@ -256,7 +259,7 @@ function resetOffset() { if (track && offsets[track.id]) { delete offsets[track.
 function surprise(stylesOnly = false) {
   const pick = (arr, not) => { const c = arr.filter((x) => x !== not); return c[Math.floor(Math.random() * c.length)]; };
   if (!stylesOnly) {
-    settings.backdrop = pick(['gradient', 'gradient', 'blur', 'cover'], settings.backdrop);
+    settings.backdrop = pick(['gradient', 'gradient', 'blur', 'cover', 'water'], settings.backdrop);
     settings.light = pick(['flow', 'glow', 'sides'], settings.light);
     applySettings();
   }
@@ -343,6 +346,7 @@ function frame(ts) {
   }
   app.edge.tick(dt);
   if (settings.backdrop === 'gradient' && (!PREVIEW || frameNo % 3 === 0)) app.bg.draw(ts / 1000, app.edge.pulse);
+  else if (settings.backdrop === 'water' && (!PREVIEW || frameNo % 2 === 0)) app.water.draw(ts / 1000, app.edge.pulse);
 
   const dur = track?.duration;
   $('#progress div').style.width = dur ? `${Math.min(100, ((t - LEAD) / dur) * 100)}%` : '0';
@@ -363,6 +367,7 @@ if (PREVIEW) {
     else if (m.type === 'art' && m.url !== app.trackArt) {
       app.trackArt = m.url;
       swapLayer($('#bg-art'), 'art', m.url); swapLayer($('#center-art'), 'art', m.url);
+      app.water.setArt(m.url);
     }
     else if (m.type === 'settings') {
       const keep = { style: settings.style, backdrop: HERO ? m.settings.backdrop : 'gradient', light: HERO ? m.settings.light : 'off', info: false };

@@ -696,6 +696,255 @@ class Glitch extends Base {
   }
 }
 
+// ───────────────────────── Constellation: words become stars, joined one by one ─────────────────────────
+// One long thread runs through the whole song. Each word lands on a random free spot near the last one,
+// lines stay on screen until the sky is full, then the camera glides on to the next empty patch of sky
+// and the thread carries on from the last star.
+const SVGNS = 'http://www.w3.org/2000/svg';
+function seeded(seed) { // mulberry32
+  let st = seed | 0 || 7;
+  return () => {
+    st = (st + 0x6d2b79f5) | 0;
+    let x = Math.imul(st ^ (st >>> 15), 1 | st);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+class Constellation extends Base {
+  static id = 'stars'; static label = 'Constellation'; static hint = 'Words light up as stars scattered across the sky, joined by one thread that fills the screen';
+  constructor(root, app) {
+    super(root, app);
+    const far = el('div', 'cs-far'), far2 = el('div', 'cs-far b');
+    this.sky = el('div', 'cs-sky');
+    const rnd = seeded(91);
+    for (let i = 0; i < 90; i++) {
+      const s = el('i');
+      const a = rnd(), b = rnd(), c = rnd();
+      s.style.cssText = `left:${(a * 100).toFixed(2)}%;top:${(b * 100).toFixed(2)}%;--sz:${(1 + c * 1.8).toFixed(2)}px;--tw:${(3 + c * 5).toFixed(2)}s;--dl:${(-a * 8).toFixed(2)}s;--o:${(0.12 + c * 0.3).toFixed(2)}`;
+      this.sky.appendChild(s);
+    }
+    this.far = [far, far2];
+    this.drift = el('div', 'cs-drift');
+    this.world = el('div', 'cs-world');
+    this.spark = el('div', 'cs-spark');
+    this.drift.appendChild(this.world);
+    root.append(far, far2, this.sky, this.drift);
+    this.ctx = document.createElement('canvas').getContext('2d');
+    document.fonts?.ready.then(() => this.relayout());
+  }
+  reset() { this.plan = null; this.built = new Map(); this.world.innerHTML = ''; this.cam = null; }
+  relayout() {
+    if (!this.lines.length) return;
+    this.reset();
+    this.idx = -2;
+  }
+
+  // ── layout: decide where every word of the song goes, once ──
+  layout() {
+    const W = this.root.clientWidth, H = this.root.clientHeight;
+    if (!W || !H) return null;
+    const probe = {};
+    for (const e of [0, 1, 2]) {
+      const p = el('span', `cs-word e${e}`, 'Mg');
+      p.style.visibility = 'hidden';
+      this.world.appendChild(p);
+      const cs = getComputedStyle(p);
+      probe[e] = { font: cs.font || `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, ls: parseFloat(cs.letterSpacing) || 0, fs: parseFloat(cs.fontSize) || 40 };
+      p.remove();
+    }
+    const fs = probe[0].fs;
+    const measure = (w) => { const p = probe[w.emph] || probe[0]; this.ctx.font = p.font; return this.ctx.measureText(w.text).width + p.ls * [...w.text].length; };
+    const rand = seeded(Math.floor(hash(`${this.app.trackTitle}|${this.app.trackArtist}|stars`) * 4294967295));
+
+    const pages = [{ ox: 0, oy: 0 }];
+    let rects = [], prev = null, pageStart = true;
+    // what a word occupies: its star above, its label centred underneath
+    const box = (sx, sy, w) => ({ l: sx - w / 2 - fs * 0.35, r: sx + w / 2 + fs * 0.35, t: sy - fs * 0.6, b: sy + fs * 1.6 });
+    const fits = (b, pg, taken) => b.l >= pg.ox + W * 0.04 && b.r <= pg.ox + W * 0.96 && b.t >= pg.oy + H * 0.07 && b.b <= pg.oy + H * 0.88
+      && taken.every((o) => b.r < o.l || b.l > o.r || b.b < o.t || b.t > o.b);
+
+    const tryLine = (L, pg, taken, from, fresh) => {
+      const out = [];
+      let last = from, heading = (rand() - 0.5) * 0.9;
+      for (let k = 0; k < L.words.length; k++) {
+        const w = measure(L.words[k]);
+        let spot = null;
+        if (k === 0 && fresh) {
+          // first words on a new patch of sky come in from the left, where the camera arrives from
+          for (let i = 0; i < 80 && !spot; i++) {
+            const sx = pg.ox + W * (0.08 + rand() * 0.3) + w / 2, sy = pg.oy + H * (0.16 + rand() * 0.6);
+            const b = box(sx, sy, w);
+            if (fits(b, pg, taken)) spot = { sx, sy, b };
+          }
+        } else if (k === 0) {
+          // a new line starts on any free spot, preferring somewhere not too far from the last star
+          let best = null, bestD = Infinity;
+          for (let i = 0; i < 260; i++) {
+            const sx = pg.ox + W * (0.06 + rand() * 0.88), sy = pg.oy + H * (0.12 + rand() * 0.72);
+            const b = box(sx, sy, w);
+            if (!fits(b, pg, taken)) continue;
+            const d = Math.hypot(sx - last.sx, (sy - last.sy) * 1.4) + rand() * W * 0.25;
+            if (d > fs * 2.5 && d < bestD) { bestD = d; best = { sx, sy, b }; }
+          }
+          spot = best;
+        } else {
+          // the next word steps off from the last star, mostly forward, at a random angle and distance
+          const pw = out[k - 1].w;
+          for (let i = 0; i < 90 && !spot; i++) {
+            const spread = i < 30 ? 0.75 : i < 60 ? 1.6 : Math.PI;
+            const a = heading + (rand() * 2 - 1) * spread;
+            const dist = (pw + w) * 0.5 * Math.abs(Math.cos(a)) + fs * (1.1 + rand() * 1.8);
+            const sx = last.sx + Math.cos(a) * dist, sy = last.sy + Math.sin(a) * dist;
+            const b = box(sx, sy, w);
+            if (fits(b, pg, taken)) { spot = { sx, sy, b }; heading = clamp(a * 0.5 + (rand() - 0.5) * 0.6, -1.1, 1.1); }
+          }
+        }
+        if (!spot) return null;
+        taken = [...taken, spot.b];
+        last = { sx: spot.sx, sy: spot.sy };
+        out.push({ sx: spot.sx, sy: spot.sy, w, b: spot.b });
+      }
+      return out;
+    };
+
+    const plan = this.lines.map((L) => {
+      let words = null;
+      for (let attempt = 0; attempt < 7 && !words; attempt++) words = tryLine(L, pages[pages.length - 1], rects, prev, pageStart);
+      if (!words) {
+        // sky is full: move on to an empty patch to the right, a little higher or lower
+        const pg = pages[pages.length - 1];
+        pages.push({ ox: pg.ox + W, oy: pg.oy + (rand() - 0.5) * H * 0.8 });
+        rects = [];
+        for (let attempt = 0; attempt < 6 && !words; attempt++) words = tryLine(L, pages[pages.length - 1], [], prev, true);
+        if (!words) { // a line too long for one screen: lay it out ignoring overlaps
+          const pg2 = pages[pages.length - 1];
+          words = L.words.map((w, k) => {
+            const sx = pg2.ox + W * (0.12 + (k % 5) * 0.18), sy = pg2.oy + H * (0.2 + Math.floor(k / 5) * 0.16);
+            return { sx, sy, w: measure(w), b: box(sx, sy, 0) };
+          });
+        }
+      }
+      rects.push(...words.map((x) => x.b));
+      prev = words[words.length - 1];
+      pageStart = false;
+      return { page: pages.length - 1, words };
+    });
+    return { plan, pages, fs };
+  }
+
+  // ── drawing ──
+  star(i) { const P = this.plan.plan[i]; return P.words[P.words.length - 1]; }
+  buildLine(i, past) {
+    const { fs } = this.plan, P = this.plan.plan[i], L = this.lines[i];
+    const g = el('div', `cs-line${past ? ' past' : ''}`);
+    const svg = document.createElementNS(SVGNS, 'svg');
+    g.appendChild(svg);
+    const words = L.words.map((w, k) => {
+      const pos = P.words[k];
+      const star = el('div', `cs-star e${w.emph}${past ? ' on still' : ''}`);
+      star.style.cssText = `left:${pos.sx.toFixed(1)}px;top:${pos.sy.toFixed(1)}px;--sc:var(--c${((i + k) % 4) + 1})`;
+      const label = el('span', `cs-word e${w.emph}${past ? ' on' : ''}`, w.text);
+      label.style.cssText = `left:${(pos.sx - pos.w / 2).toFixed(1)}px;top:${(pos.sy + fs * 0.45).toFixed(1)}px`;
+      const from = k > 0 ? P.words[k - 1] : i > 0 ? this.star(i - 1) : null;
+      let line = null;
+      if (from) {
+        line = document.createElementNS(SVGNS, 'line');
+        line.setAttribute('pathLength', '1');
+        line.setAttribute('x1', from.sx.toFixed(1)); line.setAttribute('y1', from.sy.toFixed(1));
+        line.setAttribute('x2', pos.sx.toFixed(1)); line.setAttribute('y2', pos.sy.toFixed(1));
+        if (past) line.style.strokeDashoffset = 0;
+        svg.appendChild(line);
+      }
+      g.append(star, label);
+      return { star, label, line, from, pos, on: past, p: past ? 1 : -1 };
+    });
+    this.world.appendChild(g);
+    return { g, words, past };
+  }
+  moveCam(page, instant) {
+    const pg = this.plan.pages[page];
+    if (this.cam === page && !instant) return;
+    this.cam = page;
+    const x = pg.ox, y = pg.oy;
+    for (const n of [this.world, ...this.far]) n.style.transition = instant ? 'none' : '';
+    this.world.style.transform = `translate(${-x}px, ${-y}px)`;
+    this.far[0].style.backgroundPosition = `${(-x * 0.12).toFixed(1)}px ${(-y * 0.12).toFixed(1)}px`;
+    this.far[1].style.backgroundPosition = `${(-x * 0.25).toFixed(1)}px ${(-y * 0.25).toFixed(1)}px`;
+    if (instant) { void this.world.offsetWidth; for (const n of [this.world, ...this.far]) n.style.transition = ''; }
+  }
+  /** Keep only what can be seen: lines on this patch of sky and the one before, up to the next line. */
+  sync(idx, upto) {
+    const plan = this.plan.plan;
+    const page = plan[Math.max(0, upto)].page;
+    const want = new Set();
+    for (let i = Math.min(upto, this.lines.length - 1); i >= 0 && i >= idx - 60; i--) {
+      if (plan[i].page < page - 1) break;
+      if (i <= idx || i === upto) want.add(i);
+    }
+    for (const [i, b] of this.built) {
+      if (want.has(i)) continue;
+      this.built.delete(i);
+      b.g.classList.add('gone');
+      setTimeout(() => b.g.remove(), 1300);
+    }
+    for (const i of [...want].sort((a, b) => a - b)) if (!this.built.has(i)) this.built.set(i, this.buildLine(i, i < idx));
+    for (const [i, b] of this.built) {
+      b.g.classList.toggle('past', i < idx);
+      if (i < idx && !b.past) { // finished (or skipped past): make sure every star and thread is lit
+        b.past = true;
+        b.words.forEach((wd) => { wd.on = true; wd.star.classList.add('on'); wd.label.classList.add('on'); if (wd.line) wd.line.style.strokeDashoffset = 0; });
+      }
+    }
+  }
+  update(t, s) {
+    if (!this.lines.length) return;
+    if (!this.plan) {
+      this.plan = this.layout();
+      if (!this.plan) return;
+      this.built = new Map();
+      this.world.appendChild(this.spark);
+      this.moveCam(this.plan.plan[Math.max(0, s.idx)].page, true);
+      this.idx = -2;
+    }
+    const idx = s.idx;
+    const next = this.lines[idx + 1];
+    // the next line (and the camera, if it lives on a new patch of sky) gets ready shortly before it is sung
+    const soon = next && t > next.start - 1.8 ? idx + 1 : idx;
+    if (idx !== this.idx || soon !== this.soon) { this.idx = idx; this.soon = soon; this.sync(idx, soon); }
+    this.root.classList.toggle('resting', !!s.rest);
+    this.moveCam(this.plan.plan[Math.max(0, soon)].page);
+
+    let spark = null;
+    for (const i of [idx, idx + 1]) {
+      const b = this.built.get(i);
+      if (!b) continue;
+      const L = this.lines[i];
+      L.words.forEach((w, k) => {
+        const wd = b.words[k];
+        const on = t >= w.start;
+        if (on !== wd.on) {
+          wd.on = on;
+          wd.star.classList.toggle('on', on);
+          wd.label.classList.toggle('on', on);
+        }
+        if (!wd.line) return;
+        // the thread leaves the previous star and arrives exactly as this word is sung
+        const prevStart = k > 0 ? L.words[k - 1].start : this.lines[i - 1].words[this.lines[i - 1].words.length - 1].start;
+        const far = k === 0 ? 1.2 : 0.6;
+        const d = clamp(w.start - prevStart, 0.15, far);
+        const p = Math.round(clamp((t - (w.start - d)) / d) * 100) / 100;
+        if (p !== wd.p) { wd.p = p; wd.line.style.strokeDashoffset = (1 - p).toFixed(2); }
+        if (p > 0 && p < 1) spark = { a: wd.from, b: wd.pos, p: ease(p) };
+      });
+    }
+    if (spark) {
+      const x = spark.a.sx + (spark.b.sx - spark.a.sx) * spark.p, y = spark.a.sy + (spark.b.sy - spark.a.sy) * spark.p;
+      this.spark.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      this.spark.style.opacity = 1;
+    } else this.spark.style.opacity = 0;
+  }
+}
+
 // ───────────────────────── Chat: the song as a two-person chat ─────────────────────────
 const REACTIONS = ['❤️', '🔥', '😭', '✨', '🥹', '💯'];
 const clockTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -813,10 +1062,10 @@ class Chat extends Base {
   }
 }
 
-export const STYLES = [Glide, Chat, Pop, Stack, Spotlight, Bounce, Love, Wave, Scatter, Depth, Focus, Neon, Collage, Board, Glitch, Type, Cinema];
+export const STYLES = [Glide, Chat, Pop, Stack, Spotlight, Bounce, Love, Wave, Scatter, Depth, Constellation, Focus, Neon, Collage, Board, Glitch, Type, Cinema];
 const CATS = {
   glide: 'Classic', spot: 'Classic', bounce: 'Classic', focus: 'Classic', cinema: 'Classic',
   pop: 'Kinetic', stack: 'Kinetic', scatter: 'Kinetic', glitch: 'Kinetic', collage: 'Kinetic', wave: 'Kinetic',
-  chat: 'Scenes', depth: 'Scenes', neon: 'Scenes', board: 'Scenes', type: 'Scenes', love: 'Scenes',
+  chat: 'Scenes', depth: 'Scenes', stars: 'Scenes', neon: 'Scenes', board: 'Scenes', type: 'Scenes', love: 'Scenes',
 };
 STYLES.forEach((S) => { S.cat = CATS[S.id] || 'Classic'; });

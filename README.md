@@ -20,13 +20,14 @@
 
 - **Follows any player.** Spotify, Apple Music, YouTube / YouTube Music in a browser, SoundCloud, Tidal, Deezer… anything that shows up in the Windows media controls. No login, no API keys.
 - **Synced lyrics.** Time-synced lyrics come from [LRCLIB](https://lrclib.net), and the timing follows the player exactly, including pauses and seeks.
-- **17 animation styles.** Glide · Chat · Pop · Stack · Spotlight · Bounce · Love · Wave · Scatter · Depth · Focus · Neon · Collage · Board · Glitch · Type · Cinema
+- **18 animation styles.** Glide · Chat · Pop · Stack · Spotlight · Bounce · Love · Wave · Scatter · Depth · Constellation · Focus · Neon · Collage · Board · Glitch · Type · Cinema
 - **Chat style.** The song plays out as two people texting: typing dots, bubbles from both sides, read ticks and the odd reaction.
 - **Landing screen.** Every style plays its own live preview in a gallery, with a large preview of the one you pick. Star your favourites so ← / → only cycle through those.
 - **Glass menus.** Text, Background, Light and Screens settings in frosted-glass panels.
 - **Player status.** Spotify and Apple Music icons with live status lights. The status panel shows every open player, which one the lyrics are following, whether lyrics were found and how they're timed, *Too early / Too late* sync buttons, and *Search lyrics again*.
 - **Album colours.** Text, background and lights use only colours taken from the song's cover.
-- **Backgrounds.** Animated gradient, blurred cover, album cover, or black.
+- **Constellation style.** Each word lights up as a star at a random spot in the sky, and one thread of light joins them word by word. Lines pile up until the screen is full, then the view glides on to an empty patch of sky and the thread carries on.
+- **Backgrounds.** Animated gradient, blurred cover, album cover, water (the cover behind a window with a slow sheet of water running down it), or black.
 - **Edge lighting.** *Flow* (light racing around the screen edges), *Glow*, or *Side lights*. They pulse with every word.
 - **Every screen.** One switch puts full-screen lyrics on all your monitors, all in sync.
 - **Easy.** *Surprise me* button, *New style every song*, and *Too early / Too late* buttons that remember the fix for each song.
@@ -53,7 +54,7 @@ The app opens on the landing screen. Pick a style from the gallery and press **S
 | Enter | Start (from the landing screen) |
 | ← / → | Previous / next style (only favourites, if you starred two or more) |
 | S | Surprise me (random style, background and light) |
-| B | Background: Gradient → Blurred cover → Album cover → Black |
+| B | Background: Gradient → Blurred cover → Album cover → Water → Black |
 | L | Edge light: Flow → Glow → Side lights → Off |
 | C | Album colours / white text |
 | I | Show / hide the song name |
